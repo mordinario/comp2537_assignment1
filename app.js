@@ -59,16 +59,15 @@ User stories:
 // Dependencies
 // (also installed with "npm i ___")
 const express = require('express');
+// FS
+// (allows file reading)
+// (taken from COMP1537 notes)
+const fs = require('fs');
 
 // Port
 // (pick the first if it exists,
 //  pick the second if it doesn't)
 const port = process.env.PORT || 3000;
-
-// FS
-// (allows file reading)
-// (taken from COMP1537 notes)
-const fs = require('fs');
 
 // App
 const app = express();
@@ -76,6 +75,21 @@ const app = express();
 // Create temporary "database"
 // (taken from COMP2537 example)
 var users = [];
+
+// Returns true if a given username is
+// in the "database", else false
+function inDatabase(username, password)
+{
+    for(i = 0; i < users.length; i++)
+    {
+        if(users[i].username == username &&
+           users[i].password == password)
+        {
+            return true;
+        }
+    }
+    return false;
+}
 
 // allows req.body
 app.use(express.urlencoded({extended: false}));
@@ -100,19 +114,39 @@ app.post('/addUser', (req,res) => {
     // Get username and password
     var username = req.body.username;
     var password = req.body.password;
-    // Push to "database"
-    users.push({username: username, password: password});
-
+    // Create HTML page
+    var pagehtml = "";
     var usershtml = "";
+
+    // If username and password not in database,
+    // add them
+    if(!inDatabase(username, password))
+    {
+        // Push to "database"
+        users.push({username: username, password: password});
+        // State new account made
+        pagehtml += "<p>New account!</p>"
+    }
+    // Else, log them in
+    else
+    {
+        pagehtml += "<p>Logged in!</p>";
+    }
     for (i = 0; i < users.length; i++) {
         usershtml += "<li>";
         usershtml += users[i].username + ": " + users[i].password
         usershtml += "</li>";
     }
 
-    var html = "<ul>" + usershtml + "</ul>";
-    res.send(html);
+    pagehtml += "<ul>" + usershtml + "</ul>";
+    res.send(pagehtml);
 });
+
+// At end of file
+// (taken from express docs)
+app.use((req, res) => {
+    res.status(404).send("Page not found");
+  });
 
 // Listen
 app.listen(port, () => {
