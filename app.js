@@ -89,8 +89,22 @@ function inDatabase(username, password)
 {
     for(i = 0; i < users.length; i++)
     {
+        if(users[i].username == username)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Returns true if a given password
+// matches the given username, else false
+function validPassword(username, password)
+{
+    for(i = 0; i < users.length; i++)
+    {
         if(users[i].username == username &&
-           users[i].password == password)
+           bcrypt.compareSync(password, users[i].password))
         {
             return true;
         }
@@ -105,46 +119,72 @@ app.get('/', (req,res) => {
     res.send(doc);
 });
 
+app.get('/signup', (req,res) => {
+    let doc = fs.readFileSync("./public/html/signup.html", "utf8");
+    res.send(doc);
+});
+
 app.get('/login', (req,res) => {
     let doc = fs.readFileSync("./public/html/login.html", "utf8");
     res.send(doc);
 });
 
+app.get('/loggedin', (req,res) => {
+    let doc = fs.readFileSync("./public/html/loggedin.html", "utf8");
+    res.send(doc);
+});
+
 // add user to "database"
+// (or redirect if user exists)
 // (taken from 2537)
 app.post('/addUser', (req,res) => {
     // Get username and password
     var username = req.body.username;
     var password = req.body.password;
-    // Create HTML page
-    var pagehtml = "";
-    var usershtml = "";
 
-    // If username and password not in database,
-    // add them
-    if(!inDatabase(username, password))
+    // If username and password 
+    // not in database, add them
+    if(!inDatabase(username))
     {
         // Hash password and
-        // Push to "database"
+        // push to "database"
         var hashedPassword = bcrypt.hashSync(password, saltRounds);
         users.push({username: username, password: hashedPassword});
-        // State new account made
-        pagehtml += "<p>New account!</p>"
+        res.redirect('/loggedin');
     }
-    // Else, log them in
+    // Else, username already in database
+    // Attempt to login user
     else
     {
-        pagehtml += "<p>Logged in!</p>";
+        // If valid credentials, log user in
+        if(validPassword(username, password))
+        {
+            res.redirect('/loggedin');
+        }
+        // Else, redirect to login page
+        else
+        {
+            res.redirect('/login');
+        }
     }
-    // Load every other user in the page,
-    // showing username and (hashed) password
-    for (i = 0; i < users.length; i++) {
-        usershtml += "<li>";
-        usershtml += users[i].username + ": " + users[i].password
-        usershtml += "</li>";
+});
+
+// Attempt to log in user
+app.post('/loginUser', (req,res) => {
+    // Get username and password
+    var username = req.body.username;
+    var password = req.body.password;
+
+    // If valid credentials, log user in
+    if(validPassword(username, password))
+    {
+        res.redirect('/loggedin');
     }
-    pagehtml += "<ul>" + usershtml + "</ul>";
-    res.send(pagehtml);
+    // Else, redirect to login page
+    else
+    {
+        res.redirect('/login');
+    }
 });
 
 // At end of file
