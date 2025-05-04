@@ -59,6 +59,8 @@ User stories:
 // ----- Dependencies -----
 // (also installed with "npm i ___")
 const express = require('express');
+const session = require('express-session');
+const MongoStore = require('connect-mongo');
 const bcrypt = require('bcrypt');
 const fs = require('fs');
 
@@ -77,6 +79,32 @@ var users = [];
 // Pick amount of hash rounds to
 // hash the passwords
 const saltRounds = 12;
+
+// Pick how many milliseconds it takes for
+// the session to expire
+// (hours * minutes * seconds * milliseconds)
+const expireTimeMs = 24 * 60 * 60 * 1000;
+
+// Create secret session information
+const mongodb_user              = process.env.MONGODB_USER;
+const mongodb_password          = process.env.MONGODB_PASSWORD;
+const node_session_secret       = process.env.NODE_SESSION_SECRET;
+const mongodb_session_secret    = process.env.MONGODB_SESSION_SECRET;
+
+// Create connection to database(? i think this is what this does)
+var mongoStore = MongoStore.create({
+    mongoUrl: `mongodb+srv://${mongodb_user}:${mongodb_password}@cluster0.mfu3rzp.mongodb.net/sessions`,
+    crypto: {
+        secret: mongodb_session_secret
+    }
+});
+
+app.use(session({ 
+    secret: node_session_secret,
+    store: mongoStore, //default is memory store 
+    saveUninitialized: false, 
+    resave: true
+}));
 
 // allows req.body parsing
 app.use(express.urlencoded({extended: false}));
@@ -112,6 +140,16 @@ function validPassword(username, password)
     return false;
 }
 
+// Logs in a user and redirects them to
+// the main page
+function redirectLoggedInUser(req, res)
+{
+    req.session.authenticated = true;
+    req.session.username = req.body.username;;
+    req.session.cookie.maxAge = expireTimeMs;
+    res.redirect('/loggedin');
+}
+
 // App stuff
 app.get('/', (req,res) => {
     // how it works in 1537
@@ -130,8 +168,15 @@ app.get('/login', (req,res) => {
 });
 
 app.get('/loggedin', (req,res) => {
-    let doc = fs.readFileSync("./public/html/loggedin.html", "utf8");
-    res.send(doc);
+    if(!req.session.authenticated)
+    {
+        res.redirect('/login');
+    }
+    else
+    {
+        let doc = fs.readFileSync("./public/html/loggedin.html", "utf8");
+        res.send(doc);
+    }
 });
 
 // add user to "database"
@@ -150,7 +195,7 @@ app.post('/addUser', (req,res) => {
         // push to "database"
         var hashedPassword = bcrypt.hashSync(password, saltRounds);
         users.push({username: username, password: hashedPassword});
-        res.redirect('/loggedin');
+        redirectLoggedInUser(req, res);
     }
     // Else, username already in database
     // Attempt to login user
@@ -159,7 +204,7 @@ app.post('/addUser', (req,res) => {
         // If valid credentials, log user in
         if(validPassword(username, password))
         {
-            res.redirect('/loggedin');
+            redirectLoggedInUser(req, res);
         }
         // Else, redirect to login page
         else
@@ -178,7 +223,7 @@ app.post('/loginUser', (req,res) => {
     // If valid credentials, log user in
     if(validPassword(username, password))
     {
-        res.redirect('/loggedin');
+        redirectLoggedInUser(req, res);
     }
     // Else, redirect to login page
     else
@@ -191,7 +236,7 @@ app.post('/loginUser', (req,res) => {
 // (taken from express docs)
 app.use((req, res) => {
     res.status(404).send("Page not found");
-  });
+});
 
 // Listen
 app.listen(port, () => {

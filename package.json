@@ -4,13 +4,14 @@
     "description": "v1.0 - Assignment 1 of COMP2537\r ===================================",
     "main": "index.js",
     "scripts": {
-      "test": "echo \"Error: no test specified\" && exit 1"
+        "test": "echo \"Error: no test specified\" && exit 1"
     },
     "author": "",
     "license": "ISC",
     "dependencies": {
-      "bcrypt": "^5.1.1",
-      "express": "^5.1.0"
+        "bcrypt": "^5.1.1",
+        "connect-mongo": "^5.1.0",
+        "express": "^5.1.0",
+        "express-session": "^1.18.1"
     }
-  }
-  
+}
