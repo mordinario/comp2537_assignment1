@@ -56,25 +56,32 @@ User stories:
 // - port
 // - app
 
-// Dependencies
+// ----- Dependencies -----
 // (also installed with "npm i ___")
 const express = require('express');
-// FS
-// (allows file reading)
-// (taken from COMP1537 notes)
+const bcrypt = require('bcrypt');
 const fs = require('fs');
 
-// Port
+// ----- Port -----
 // (pick the first if it exists,
 //  pick the second if it doesn't)
 const port = process.env.PORT || 3000;
 
-// App
+// ----- App -----
 const app = express();
 
 // Create temporary "database"
 // (taken from COMP2537 example)
 var users = [];
+
+// Pick amount of hash rounds to
+// hash the passwords
+const saltRounds = 12;
+
+// allows req.body parsing
+app.use(express.urlencoded({extended: false}));
+// Sets root folder
+app.use(express.static(__dirname + "/public"));
 
 // Returns true if a given username is
 // in the "database", else false
@@ -90,11 +97,6 @@ function inDatabase(username, password)
     }
     return false;
 }
-
-// allows req.body
-app.use(express.urlencoded({extended: false}));
-// Sets root folder
-app.use(express.static(__dirname + "/public"));
 
 // App stuff
 app.get('/', (req,res) => {
@@ -122,8 +124,10 @@ app.post('/addUser', (req,res) => {
     // add them
     if(!inDatabase(username, password))
     {
+        // Hash password and
         // Push to "database"
-        users.push({username: username, password: password});
+        var hashedPassword = bcrypt.hashSync(password, saltRounds);
+        users.push({username: username, password: hashedPassword});
         // State new account made
         pagehtml += "<p>New account!</p>"
     }
@@ -132,12 +136,13 @@ app.post('/addUser', (req,res) => {
     {
         pagehtml += "<p>Logged in!</p>";
     }
+    // Load every other user in the page,
+    // showing username and (hashed) password
     for (i = 0; i < users.length; i++) {
         usershtml += "<li>";
         usershtml += users[i].username + ": " + users[i].password
         usershtml += "</li>";
     }
-
     pagehtml += "<ul>" + usershtml + "</ul>";
     res.send(pagehtml);
 });
