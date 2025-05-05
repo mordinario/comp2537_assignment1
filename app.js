@@ -63,6 +63,9 @@ const session = require('express-session');
 const MongoStore = require('connect-mongo');
 const bcrypt = require('bcrypt');
 const fs = require('fs');
+const Joi = require('joi');
+require('dotenv').config();
+require('./utils.js');
 
 // ----- Port -----
 // (pick the first if it exists,
@@ -71,10 +74,6 @@ const port = process.env.PORT || 3000;
 
 // ----- App -----
 const app = express();
-
-// Create temporary "database"
-// (taken from COMP2537 example)
-var users = [];
 
 // Pick amount of hash rounds to
 // hash the passwords
@@ -86,19 +85,27 @@ const saltRounds = 12;
 const expireTimeMs = 24 * 60 * 60 * 1000;
 
 // Create secret session information
+const mongodb_host              = process.env.MONGODB_HOST;
 const mongodb_user              = process.env.MONGODB_USER;
 const mongodb_password          = process.env.MONGODB_PASSWORD;
+const mongodb_database          = process.env.MONGODB_DATABASE;
 const node_session_secret       = process.env.NODE_SESSION_SECRET;
 const mongodb_session_secret    = process.env.MONGODB_SESSION_SECRET;
 
+// Get users from database
+// (taken from COMP2537 example)
+var {database} = include('databaseConnection');
+const userCollection = database.db(mongodb_database).collection('users');
+
 // Create connection to database(? i think this is what this does)
 var mongoStore = MongoStore.create({
-    mongoUrl: `mongodb+srv://${mongodb_user}:${mongodb_password}@cluster0.mfu3rzp.mongodb.net/sessions`,
+    mongoUrl: `mongodb+srv://${mongodb_user}:${mongodb_password}@${mongodb_host}/sessions`,
     crypto: {
         secret: mongodb_session_secret
     }
 });
 
+// Copied from COMP 2537
 app.use(session({ 
     secret: node_session_secret,
     store: mongoStore, //default is memory store 
@@ -111,33 +118,38 @@ app.use(express.urlencoded({extended: false}));
 // Sets root folder
 app.use(express.static(__dirname + "/public"));
 
-// Returns true if a given username is
+// Returns true if a given email is
 // in the "database", else false
-function inDatabase(username, password)
+async function inDatabase(email)
 {
-    for(i = 0; i < users.length; i++)
+    const result = await userCollection.find({email: email})
+                                       .project({name: 1, email: 1, password: 1, _id: 1})
+                                       .toArray();
+    if(result.length != 1)
     {
-        if(users[i].username == username)
-        {
-            return true;
-        }
+        return false;
     }
-    return false;
+    else
+    {
+        return true;
+    }
 }
 
 // Returns true if a given password
-// matches the given username, else false
-function validPassword(username, password)
+// matches the given email, else false
+async function validPassword(email, password)
 {
-    for(i = 0; i < users.length; i++)
+    const result = await userCollection.find({email: email})
+                                       .project({name: 1, email: 1, password: 1, _id: 1})
+                                       .toArray();
+    if(result.length != 1)
     {
-        if(users[i].username == username &&
-           bcrypt.compareSync(password, users[i].password))
-        {
-            return true;
-        }
+        return false;
     }
-    return false;
+    if (await bcrypt.compare(password, result[0].password))
+    {
+        return true;
+    }
 }
 
 // Logs in a user and redirects them to
@@ -145,7 +157,7 @@ function validPassword(username, password)
 function redirectLoggedInUser(req, res)
 {
     req.session.authenticated = true;
-    req.session.username = req.body.username;;
+    req.session.name = req.body.name;
     req.session.cookie.maxAge = expireTimeMs;
     res.redirect('/loggedin');
 }
@@ -162,8 +174,25 @@ app.get('/signup', (req,res) => {
     res.send(doc);
 });
 
+app.get('/signupsubmit', (req,res) => {
+    let doc = fs.readFileSync("./public/html/signupsubmit.html", "utf8");
+    res.send(doc);
+});
+
 app.get('/login', (req,res) => {
-    let doc = fs.readFileSync("./public/html/login.html", "utf8");
+    if(req.session.authenticated)
+        {
+            res.redirect('/loggedin');
+        }
+        else
+        {
+            let doc = fs.readFileSync("./public/html/login.html", "utf8");
+            res.send(doc);
+        }
+});
+
+app.get('/loginsubmit', (req,res) => {
+    let doc = fs.readFileSync("./public/html/loginsubmit.html", "utf8");
     res.send(doc);
 });
 
@@ -179,63 +208,139 @@ app.get('/loggedin', (req,res) => {
     }
 });
 
+app.get('/logout', (req,res) => {
+    req.session.destroy();
+    res.redirect('/');
+});
+
+app.get('/dne', (req,res) => {
+    let doc = fs.readFileSync("./public/html/dne.html", "utf8");
+    res.send(doc);
+});
+
+// Gets information needed by some pages
+// (I didn't know EJS existed when I did this -
+// this is definitely *some* breach of privacy but
+// it doesn't need to be perfect anyway)
+app.get('/getName', (req,res) => {
+    res.json({name: req.session.name || 'User'});
+});
+
+app.get('/getError', (req,res) => {
+    res.json({error: req.session.validationError});
+});
+
+app.get('/getAuth', (req,res) => {
+    res.json({auth: req.session.authenticated || 'None'});
+});
+
 // add user to "database"
 // (or redirect if user exists)
 // (taken from 2537)
-app.post('/addUser', (req,res) => {
-    // Get username and password
-    var username = req.body.username;
+app.post('/addUser', async (req,res) => {
+    // Get name, email, and password
+    var name = req.body.name;
+    var email = req.body.email;
     var password = req.body.password;
+    // Reset validation error string
+    req.session.validationError = "";
 
-    // If username and password 
-    // not in database, add them
-    if(!inDatabase(username))
+    // If email not in database,
+    // add name, email, and password
+    if(!await inDatabase(email))
     {
-        // Hash password and
-        // push to "database"
-        var hashedPassword = bcrypt.hashSync(password, saltRounds);
-        users.push({username: username, password: hashedPassword});
+        // Set rules for name, email and password
+        const nameSchema = Joi.string().alphanum().max(20).required();
+        const emailSchema = Joi.string().email({tlds: {allow: false}}).required();
+        const passwordSchema = Joi.string().max(20).required();
+        // Validate name, email and password
+        const nameValidation = nameSchema.validate(name);
+        const emailValidation = emailSchema.validate(email);
+        const passwordValidation = passwordSchema.validate(password);
+        let error = false;
+        // If name, email or password are invalid,
+        // log error and redirect
+        if(nameValidation.error != null)
+        {
+            req.session.validationError += "Invalid name (either missing, not exclusively alphanumeric characters, or greater than 20 characters)\n";
+            error = true;
+        }
+        if(emailValidation.error != null)
+        {
+            req.session.validationError += "Invalid email (either missing or invalid email)\n";
+            error = true;
+        }
+        if(passwordValidation.error != null)
+        {
+            req.session.validationError += "Invalid password (either missing, not exclusively alphanumeric characters, or greater than 20 characters)\n";
+            error = true;
+        }
+        if(error == true)
+        {
+            res.redirect('/signupsubmit');
+            return;
+        }
+        // Else, add user
+        var hashedPassword = await bcrypt.hash(password, saltRounds);
+        await userCollection.insertOne({name: name, email: email, password: hashedPassword});
         redirectLoggedInUser(req, res);
     }
-    // Else, username already in database
-    // Attempt to login user
+    // Else, email already in database
+    // Redirect user to login page
     else
     {
-        // If valid credentials, log user in
-        if(validPassword(username, password))
-        {
-            redirectLoggedInUser(req, res);
-        }
-        // Else, redirect to login page
-        else
-        {
-            res.redirect('/login');
-        }
+        req.session.validationError += "Email already registered. Sign up with a new one, or try to login.";
+        res.redirect('/loginsubmit');
+        return;
     }
 });
 
 // Attempt to log in user
-app.post('/loginUser', (req,res) => {
-    // Get username and password
-    var username = req.body.username;
+app.post('/loginUser', async (req,res) => {
+    // Get email and password
+    var email = req.body.email;
     var password = req.body.password;
-
-    // If valid credentials, log user in
-    if(validPassword(username, password))
+    req.session.validationError = "";
+    // If email not in database,
+    // redirect to signup page
+    if(!await inDatabase(email))
     {
+        req.session.validationError += "Email not registered. Sign up first.";
+        res.redirect('/signupsubmit');
+    }
+    // Else, email in database
+    // Set rules for email
+    const schema = Joi.string().email({tlds: {allow: false}}).required();
+    // Validate email
+    const validationResult = schema.validate(email);
+    // If email is invalid,
+    // log error and redirect
+    if(validationResult.error != null)
+        {
+            req.session.validationError += "Invalid email.";
+            res.redirect('/loginsubmit');
+            return;
+        }
+    // Else, if valid credentials, log user in
+    if(await validPassword(email, password))
+    {
+        // Get name from database
+        userAsArray = await userCollection.find({email: email}).toArray();
+        req.body.name = userAsArray[0].name;
         redirectLoggedInUser(req, res);
     }
     // Else, redirect to login page
     else
     {
-        res.redirect('/login');
+        req.session.validationError += "Incorrect password for this email.";
+        res.redirect('/loginsubmit');
     }
 });
 
 // At end of file
 // (taken from express docs)
 app.use((req, res) => {
-    res.status(404).send("Page not found");
+    res.status(404).redirect('/dne');
 });
 
 // Listen
