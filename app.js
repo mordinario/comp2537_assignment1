@@ -199,7 +199,7 @@ app.get('/loginsubmit', (req,res) => {
 app.get('/loggedin', (req,res) => {
     if(!req.session.authenticated)
     {
-        res.redirect('/login');
+        res.redirect('/');
     }
     else
     {
