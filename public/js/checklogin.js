@@ -13,7 +13,7 @@ async function getAuth()
         document.getElementById("welcome").innerText = "Welcome! You're authenticated.";
         firstButton.onclick = ()=>window.location.replace('/loggedin');
         firstButton.innerText = "Go to Members Page";
-        secondButton.onclick = ()=>window.location.replace('/loggedout');
+        secondButton.onclick = ()=>window.location.replace('/logout');
         secondButton.innerText = "Log Out";
     }
     else
