@@ -310,32 +310,35 @@ app.post('/loginUser', async (req,res) => {
     }
     // Else, email in database
     // Set rules for email
-    const schema = Joi.string().email({tlds: {allow: false}}).required();
-    // Validate email
-    const validationResult = schema.validate(email);
-    // If email is invalid,
-    // log error and redirect
-    if(validationResult.error != null)
-        {
-            req.session.validationError += "Invalid email.";
-            res.redirect('/loginsubmit');
-        }
-    // Else, if valid credentials, log user in
     else
     {
-        if(await validPassword(email, password))
+        const schema = Joi.string().email({tlds: {allow: false}}).required();
+        // Validate email
+        const validationResult = schema.validate(email);
+        // If email is invalid,
+        // log error and redirect
+        if(validationResult.error != null)
             {
-                // Get name from database
-                userAsArray = await userCollection.find({email: email}).toArray();
-                req.body.name = userAsArray[0].name;
-                redirectLoggedInUser(req, res);
-            }
-            // Else, redirect to login page
-            else
-            {
-                req.session.validationError += "Incorrect password for this email.";
+                req.session.validationError += "Invalid email.";
                 res.redirect('/loginsubmit');
             }
+        // Else, if valid credentials, log user in
+        else
+        {
+            if(await validPassword(email, password))
+                {
+                    // Get name from database
+                    userAsArray = await userCollection.find({email: email}).toArray();
+                    req.body.name = userAsArray[0].name;
+                    redirectLoggedInUser(req, res);
+                }
+                // Else, redirect to login page
+                else
+                {
+                    req.session.validationError += "Incorrect password for this email.";
+                    res.redirect('/loginsubmit');
+                }
+        }
     }
 });
 
