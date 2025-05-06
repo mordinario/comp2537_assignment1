@@ -82,7 +82,7 @@ const saltRounds = 12;
 // Pick how many milliseconds it takes for
 // the session to expire
 // (hours * minutes * seconds * milliseconds)
-const expireTimeMs = 24 * 60 * 60 * 1000;
+const expireTimeMs = 60 * 60 * 1000;
 
 // Create secret session information
 const mongodb_host              = process.env.MONGODB_HOST;
