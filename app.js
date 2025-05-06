@@ -319,7 +319,6 @@ app.post('/loginUser', async (req,res) => {
         {
             req.session.validationError += "Invalid email.";
             res.redirect('/loginsubmit');
-            return;
         }
     // Else, if valid credentials, log user in
     if(await validPassword(email, password))
