@@ -321,18 +321,21 @@ app.post('/loginUser', async (req,res) => {
             res.redirect('/loginsubmit');
         }
     // Else, if valid credentials, log user in
-    if(await validPassword(email, password))
-    {
-        // Get name from database
-        userAsArray = await userCollection.find({email: email}).toArray();
-        req.body.name = userAsArray[0].name;
-        redirectLoggedInUser(req, res);
-    }
-    // Else, redirect to login page
     else
     {
-        req.session.validationError += "Incorrect password for this email.";
-        res.redirect('/loginsubmit');
+        if(await validPassword(email, password))
+            {
+                // Get name from database
+                userAsArray = await userCollection.find({email: email}).toArray();
+                req.body.name = userAsArray[0].name;
+                redirectLoggedInUser(req, res);
+            }
+            // Else, redirect to login page
+            else
+            {
+                req.session.validationError += "Incorrect password for this email.";
+                res.redirect('/loginsubmit');
+            }
     }
 });
 
